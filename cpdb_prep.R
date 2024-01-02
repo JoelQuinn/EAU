@@ -3,6 +3,7 @@ library(ggplot2)
 library(patchwork)
 library(dplyr)
 library(Seurat)
+library(SeuratDisk)
 
 #Load Seurat object
 data <- readRDS("path/to/integrated_data.RDS")
@@ -53,30 +54,44 @@ z <- unlist(z)
 # Create dataframe with mouse gene names alongside human orthologue
 mg_list <- data.frame(Mouse.gene.name=mgenes, Human.gene.name=z)
 
+# Rename Muller glia to avoid Unicode errors with CPDB
+muller <- subset(data, ic_cluster == "Müller Glia")
+muller$ic_cluster <- "Muller Glia"
+
+data$ic_cluster[Cells(muller)] <- muller$ic_cluster
+
+data$ic_cluster
 
 samples <- SplitObject(data, split.by = "orig.ident")
+
 
 # Extracting files for CellPhoneDB input
 h_data <- samples[[1]]@assays$RNA@data
 e1_data <- samples[[2]]@assays$RNA@data
 e2_data <- samples[[3]]@assays$RNA@data
 
-# Rename genes as human genes
 rownames(h_data) <- mg_list[,2]
 rownames(e1_data) <- mg_list[,2]
 rownames(e2_data) <- mg_list[,2]
 
-# Output counts for CellPhoneDB
-write.table(h_data, "healthy_counts.txt", sep="\t", quote=F)
-write.table(e1_data, "eau1_counts.txt", sep="\t", quote=F, col.names = colnames(e1_data))
-write.table(e2_data, "eau2_counts.txt", sep="\t", quote=F, col.names = colnames(e2_data))
-
-# Create metadata for CellPhoneDB
 h_meta <- cbind(rownames(samples[[1]]@meta.data), samples[[1]]@meta.data[, "cell_ids", drop=F])
 e1_meta <- cbind(rownames(samples[[2]]@meta.data), samples[[2]]@meta.data[, "ic_cluster", drop=F])
 e2_meta <- cbind(rownames(samples[[3]]@meta.data), samples[[3]]@meta.data[, "ic_cluster", drop=F])
 
-# Output metadata files
-write.table(h_meta, "healthy_metadata.txt", sep = "\t", quote=F, row.names = F)
-write.table(e1_meta, "eau1_metadata.txt", sep = "\t", quote=F, row.names = F)
-write.table(e2_meta, "eau2_metadata.txt", sep = "\t", quote=F, row.names = F)
+
+healthy_conv <- CreateSeuratObject(counts=h_data, meta.data = samples[[1]]@meta.data, row.names = mg_list[,2])
+eau1_conv <- CreateSeuratObject(counts=e1_data, meta.data = samples[[2]]@meta.data, row.names = mg_list[,2])
+eau2_conv <- CreateSeuratObject(counts=e2_data, meta.data = samples[[3]]@meta.data, row.names = mg_list[,2])
+
+SaveH5Seurat(healthy_conv, paste(wdir, "CPDB/", "healthy", sep=""))
+SaveH5Seurat(eau1_conv, paste(wdir, "CPDB/", "eau1", sep=""))
+SaveH5Seurat(eau2_conv, paste(wdir, "CPDB/", "eau2", sep=""))
+
+Convert(paste(wdir, "CPDB/", "healthy.h5seurat", sep=""), dest = "h5ad")
+Convert(paste(wdir, "CPDB/", "eau1.h5seurat", sep=""), dest = "h5ad")
+Convert(paste(wdir, "CPDB/", "eau2.h5seurat", sep=""), dest = "h5ad")
+
+write.table(h_meta, paste(wdir, "CPDB/", "healthy_metadata.txt", sep=""), sep = "\t", quote=F, row.names = F)
+write.table(e1_meta, paste(wdir, "CPDB/", "eau1_metadata.txt", sep=""), sep = "\t", quote=F, row.names = F)
+write.table(e2_meta, paste(wdir, "CPDB/", "eau2_metadata.txt", sep=""), sep = "\t", quote=F, row.names = F)
+
