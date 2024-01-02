@@ -5,9 +5,9 @@ library(dplyr)
 library(Seurat)
 
 #Load Seurat object
-data <- readRDS("Documents/EAU_CITE-seq/integrated_data.RDS")
+data <- readRDS("path/to/integrated_data.RDS")
 
-# Preparing genes for CellPhoneDB as requires human gene ID input ----
+# Preparing genes for CellPhoneDB as human gene ID input is required
 hs <- useMart("ensembl", dataset = "hsapiens_gene_ensembl")
 mm <- useMart("ensembl", dataset = "mmusculus_gene_ensembl")
 
@@ -50,6 +50,7 @@ z <- lapply(mgenes, function(x){
 
 z <- unlist(z)
 
+# Create dataframe with mouse gene names alongside human orthologue
 mg_list <- data.frame(Mouse.gene.name=mgenes, Human.gene.name=z)
 
 
@@ -60,24 +61,22 @@ h_data <- samples[[1]]@assays$RNA@data
 e1_data <- samples[[2]]@assays$RNA@data
 e2_data <- samples[[3]]@assays$RNA@data
 
+# Rename genes as human genes
 rownames(h_data) <- mg_list[,2]
 rownames(e1_data) <- mg_list[,2]
 rownames(e2_data) <- mg_list[,2]
 
+# Output counts for CellPhoneDB
 write.table(h_data, "healthy_counts.txt", sep="\t", quote=F)
 write.table(e1_data, "eau1_counts.txt", sep="\t", quote=F, col.names = colnames(e1_data))
 write.table(e2_data, "eau2_counts.txt", sep="\t", quote=F, col.names = colnames(e2_data))
 
-colnames(e1_data)
-
-samples[[2]]@meta.data
-
-h_data
-
+# Create metadata for CellPhoneDB
 h_meta <- cbind(rownames(samples[[1]]@meta.data), samples[[1]]@meta.data[, "cell_ids", drop=F])
 e1_meta <- cbind(rownames(samples[[2]]@meta.data), samples[[2]]@meta.data[, "ic_cluster", drop=F])
 e2_meta <- cbind(rownames(samples[[3]]@meta.data), samples[[3]]@meta.data[, "ic_cluster", drop=F])
 
+# Output metadata files
 write.table(h_meta, "healthy_metadata.txt", sep = "\t", quote=F, row.names = F)
 write.table(e1_meta, "eau1_metadata.txt", sep = "\t", quote=F, row.names = F)
 write.table(e2_meta, "eau2_metadata.txt", sep = "\t", quote=F, row.names = F)
