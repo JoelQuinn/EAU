@@ -25,8 +25,8 @@ library(msigdbr)
 library(org.Mm.eg.db)
 library(AnnotationDbi)
 
-
-data <- readRDS("Documents/EAU_CITE-seq/integrated_data.RDS")
+# Read in integrated data object
+data <- readRDS("path/to/integrated_data.RDS")
 
 # Set up SingleCellExperiment object
 counts <- data@assays$RNA@counts
@@ -73,7 +73,7 @@ sMeta <- data.frame(colData(sce)[m, ], n_cells, row.names=NULL) %>%
 
 
 # Count aggregation
-# Whole-sample aggregation for PCA ----
+# Whole-sample aggregation for PCA
 sample_groups <- colData(sce)[, "orig.ident"]
 
 # Aggregate matrix and group by sample
@@ -108,12 +108,9 @@ rownames(aggMetadata) <- aggMetadata$orig.ident
 # Heatmap of sample pairwise correlations
 sampHM <- pheatmap(s_rld_cor, annotation = aggMetadata[, "condition", drop=F])
 
-# Save plot
-ggsave("./Data/Plots/SamplePheatmap.png", plot=sampHM, device="png", units="cm",
-       dpi=300, width=15, height=10)
 
 
-# By-cluster aggregation ----
+# By-cluster aggregation
 # subset metadata to only include cluster labels and sample name for aggregation
 groups <- colData(sce)[, c("cell_ids", "orig.ident")]
 
@@ -130,31 +127,10 @@ splitf <- sapply(stringr::str_split(rownames(agg),
                           pattern="_",
                           n=2), `[`, 1)
 
-splitf
-
 # Create a list where each part of the list is a cluster's 'count matrix',
 # then transform so that rows are genes and columns are sample names
 agg <- split.data.frame(agg, factor(splitf)) %>%
   lapply(function(u) set_colnames(t(u), stringr::str_extract(rownames(u), "(?<=_)[[:alnum:]_]+")))
-
-saveRDS(agg, file="Aggregate-for-DESeq2.rds")
-sMeta
-
-table(sce$cell_type, sce$orig.ident)
-
-# Cell numbers plot
-df <- as.data.frame(table(sce$cell_ids, sce$orig.ident))
-df <- rename(df, Cell_Type = Var1, Condition = Var2)
-
-
-pdf("./Documents/EAU_CITE-seq/Plots/cell-type_numbers.pdf", height=10, width=15)
-df %>% ggplot(aes(Cell_Type, Freq)) + 
-  geom_col(aes(fill=Condition), position="dodge") +
-  theme_cowplot() +
-  theme(axis.text.x = element_text(angle=45, hjust=1))
-dev.off()
-
-
 
 # Get sample names for each cell type cluster
 
@@ -179,23 +155,22 @@ get_cluster_ids <- function(x){
 de_cluster_ids <- map(1:length(clustIDs), get_cluster_ids) %>%
   unlist()
 
-de_cluster_ids
 
 # Create data frame with sample IDs, cluster names and conditions
 gg_df <- data.frame(cluster_id=de_cluster_ids,
                     orig.ident=DEsamples)
 
+# Add orig.ident and condition 
 gg_df <- left_join(gg_df, sMeta[, c("orig.ident", "condition")])
-gg_df
 
 metadata <- gg_df %>% dplyr::select(cluster_id, orig.ident, condition)
-metadata
 
-saveRDS(metadata, "pseudobulk_metadata.RDS")
+# Run analysis on one cell type - using MG (skip to line 280 for function to run on all clusters)
 
-# Run analysis on one cell type - using MG ----
+# View available clusters
 clusters <- unique(metadata$cluster_id)
 clusters
+         
 # subset MG metadata
 cluster_metadata <- metadata[which(metadata$cluster_id == clusters[5]), ]
 head(cluster_metadata)
@@ -208,10 +183,6 @@ head(cluster_metadata)
 counts <- agg[[clusters[5]]]
 
 cluster_counts <- data.frame(counts[, which(colnames(counts) %in% rownames(cluster_metadata))])
-
-#all(rownames(cluster_metadata) == colnames(cluster_counts))
-#cluster_counts
-
 
 # DESeq2 object creation
 dds <- DESeqDataSetFromMatrix(cluster_counts,
@@ -244,20 +215,15 @@ plotDispEsts(dds)
 contrast <- c("condition", unique(cluster_metadata$condition)[1], unique(cluster_metadata$condition)[2])
 unique(cluster_metadata$condition)
 
-
-
 res <- results(dds,
                contrast=contrast,
                alpha = 0.05)
 
 resultsNames(dds)
 
-res
 # lfc shrinkage
 res <- lfcShrink(dds, coef = 2,
                  res = res)
-
-res
 
 # table of results
 res_tbl <- res %>%
@@ -266,8 +232,6 @@ res_tbl <- res %>%
   as_tibble()
 
 res_tbl$log10pvalue <- -log10(res_tbl$pvalue)
-
-res_tbl[res_tbl$gene=="H2-Ab1",]
 
 # Significant genes ----
 # set p value cutoff
@@ -278,101 +242,17 @@ sig_res <- dplyr::filter(res_tbl, padj < padj_cutoff) %>%
   dplyr::arrange(padj)
 
 View(sig_res)
+sig_res$log10pvalue <- -log10(sig_res$pvalue)
 
 #normalize counts
 normalized_counts <- counts(dds, normalized=TRUE)
 
-sig_res
-#
-sig_res$log10pvalue <- -log10(sig_res$pvalue)
-
-ggplot(data=res_tbl, mapping = aes(x=log2FoldChange, y=log10pvalue)) +
-  geom_point() +
-  coord_cartesian(xlim=c(-5,10))
-
-
-# take top 20 significant results
-top20 <- sig_res %>%
-  dplyr::arrange(padj) %>%
-  dplyr::pull(gene) %>%
-  head(n=20)
-
-# plotting top 20 genes (with some wrangling for ggplot2) ----
-top20_norm <- data.frame(normalized_counts) %>%
-  rownames_to_column(var="gene") %>%
-  dplyr::filter(gene %in% top20)
-
-gathered_top20 <- top20_norm %>%
-  gather(colnames(top20_norm)[2:length(colnames(top20_norm))], key="samplename", value="normalized_counts")
-
-gathered_top20 <- inner_join(sMeta[, c("orig.ident", "condition")], gathered_top20, by=c("orig.ident"="samplename"))
-
-gathered_top20
-
-ggplot(gathered_top20) +
-  geom_point(aes(x = gene, 
-                 y = normalized_counts, 
-                 color = condition), 
-             position=position_jitter(w=0.1,h=0)) +
-  scale_y_log10() +
-  xlab("Genes") +
-  ylab("log10 Normalized Counts") +
-  ggtitle("Top 20 Significant DE Genes") +
-  theme_bw() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
-  theme(plot.title = element_text(hjust = 0.5))
-
-
+# Filter normalized counts by significant results - can be used for plotting
 sig_norm <- data.frame(normalized_counts) %>%
   rownames_to_column(var="gene") %>%
   dplyr::filter(gene %in% sig_res$gene)
 
-
-heat_colors <- rev(brewer.pal(10, "RdYlBu"))
-
-rownames(sig_norm) <- sig_norm$gene
-
-cleaned_sig_norm <- sig_norm[!sig_norm$gene %in% rod_genes,]
-cleaned_sig_norm["Cd274",]
-View(cleaned_sig_norm)
-
-ph <- pheatmap(sig_norm[, 2:length(colnames(sig_norm))], 
-         cluster_rows = T, 
-         show_rownames = F,
-         annotation = cluster_metadata[, c("condition", "cluster_id")],
-         border_color = NA, 
-         fontsize = 10, 
-         scale = "row", 
-         fontsize_row = 8, 
-         height = 20)
-
-
-
-
-ggsave("./Documents/EAU_CITE-seq/MG_DEseq2_pheatmap.pdf", plot=ph, dpi=300, units="cm", device = "pdf",
-       width=10, height=10)
-
-h2 <- cleaned_sig_norm[cleaned_sig_norm$gene %in% grep("H2", rownames(cleaned_sig_norm), value = TRUE),]
-
-h2 <- h2[, c(1, 4, 5, 6, 2, 3)]
-
-
-phh2 <- pheatmap(h2[, 2:length(colnames(h2))], 
-               cluster_rows = T, 
-               show_rownames = F,
-               annotation = cluster_metadata[, c("condition", "cluster_id")],
-               border_color = NA, 
-               fontsize = 10, 
-               scale = "row", 
-               fontsize_row = 8, 
-               height = 20, cluster_cols = F) +
-  
-
-ggsave("./Data/Plots/MG_DEseq2_H2-pheatmap.png", plot=phh2, dpi=300, units="cm",
-       width=15, height=10)
-
-
-# ----
+# 
 new_norm <- data.frame(normalized_counts) %>%
   rownames_to_column(var="gene") %>%
   pivot_longer(cols=!gene, names_to = "Condition") %>%
@@ -382,130 +262,10 @@ new_norm <- rename(new_norm, Sample_ID = Condition)
 
 new_norm$condition <- rep(rep(c("EAU", "Healthy"), c(2, 1)), length(unique(new_norm$gene)))
 
-new_norm <- new_norm[!new_norm$condition == "Resistant", ]
-
-
 new_norm$condition <- factor(new_norm$condition, levels = c("Healthy", "EAU"))
 colnames(new_norm)[4] <- "Condition"
 
-chemokines <- c("Cxcl1","Ccl2", "Cxcl10", "Cxcl12")
-mhc <- c("H2-Ab1","H2-Eb1", "H2-Aa")
-complement <- c("C3", "C4b", "C1ra")
-adh <- c("Vcam1", "Icam1")
-
-pc <- filter(new_norm, gene %in% chemokines) %>%
-  ggplot(aes(x=gene, y=value)) +
-  geom_bar(aes(fill=Condition), position="dodge", stat="summary", fun="mean", width = 0.7,) +
-  geom_point(aes(y=value, group=Condition), position=position_dodge(width=0.7)) +
-  theme_classic() +
-  theme(axis.title.x = element_blank(),
-        axis.title.y = element_text(size=18),
-        axis.text.x = element_text(size=22, colour="black", angle=45, hjust=1, face = "bold.italic"),
-        axis.text.y = element_text(size=18, colour="black"),
-        legend.text = element_text(size=12),
-        legend.title = element_text(size=14)) +
-  ylab("Normalized Pseudobulk Counts")
-
-pmhc <- filter(new_norm, gene %in% mhc) %>%
-  ggplot(aes(x=gene, y=value)) +
-  geom_bar(aes(fill=Condition), position="dodge", stat="summary", fun="mean", width = 0.7,) +
-  geom_point(aes(y=value, group=Condition), position=position_dodge(width=0.7)) +
-  theme_classic() +
-  theme(axis.title.x = element_blank(),
-        axis.title.y = element_blank(),
-        axis.text.x = element_text(size=22, colour="black", angle=45, hjust=1, face = "bold.italic"),
-        axis.text.y = element_text(size=18, colour="black"),
-        legend.text = element_text(size=12),
-        legend.title = element_text(size=14))
-
-pcomp <- filter(new_norm, gene %in% complement) %>%
-  ggplot(aes(x=gene, y=value)) +
-  geom_bar(aes(fill=Condition), position="dodge", stat="summary", fun="mean", width = 0.7,) +
-  geom_point(aes(y=value, group=Condition), position=position_dodge(width=0.7)) +
-  theme_classic() +
-  theme(axis.title.x = element_blank(),
-        axis.title.y = element_blank(),
-        axis.text.x = element_text(size=22, colour="black", angle=45, hjust=1, face = "bold.italic"),
-        axis.text.y = element_text(size=18, colour="black"),
-        legend.text = element_text(size=12),
-        legend.title = element_text(size=14)) +
-  coord_cartesian(ylim=c(0, 300))
-
-padh <- filter(new_norm, gene %in% adh) %>%
-  ggplot(aes(x=gene, y=value)) +
-  geom_bar(aes(fill=Condition), position="dodge", stat="summary", fun="mean", width = 0.7,) +
-  geom_point(aes(y=value, group=Condition), position=position_dodge(width=0.7)) +
-  theme_classic() +
-  theme(axis.title.x = element_blank(),
-        axis.title.y = element_blank(),
-        axis.text.x = element_text(size=22, colour="black", angle=45, hjust=1, face = "bold.italic"),
-        axis.text.y = element_text(size=18, colour="black"),
-        legend.text = element_text(size=12),
-        legend.title = element_text(size=14)) +
-  coord_cartesian(ylim=c(0,300))
-
-
-pdf("LeadingEdgeMG.pdf", height=5, width=15)
-pc + pcomp + padh + pmhc + patchwork::plot_layout(ncol=4)
-dev.off()
-
-
-filter(new_norm, gene %in% "Il6") %>%
-  ggplot(aes(x=gene, y=value)) +
-  geom_bar(aes(fill=Condition), position="dodge", stat="summary", fun="mean", width = 0.5,) +
-  geom_point(aes(y=value, group=Condition), position=position_dodge(width=0.5)) +
-  theme_classic() +
-  theme(axis.title.x = element_blank(),
-        axis.title.y = element_blank(),
-        axis.text.x = element_text(size=18, colour="black", angle=45, hjust=1, face = "bold.italic"),
-        axis.text.y = element_text(size=18, colour="black"),
-        legend.text = element_text(size=14)) 
-
-pIgsf <- new_norm[new_norm$gene =="Igsf11",] %>%
-  ggplot(aes(x=factor(gene), y=value)) +
-  geom_bar(aes(fill=condition), position="dodge", stat="summary", fun="mean", width = 0.5) +
-  geom_point(aes(y=value, group=condition), position=position_dodge(width=0.5)) +
-  theme_classic() +
-  theme(axis.title.x = element_blank(),
-        axis.title.y = element_blank(),
-        axis.text.x = element_text(size=16, colour="black", angle=45, hjust=1, face = "bold.italic"),
-        axis.text.y = element_text(size=14, colour="black")) +
-  ylab("Normalized Pseudobulk Counts") +
-  scale_y_continuous(limits=c(0, 1600), expand=c(0,0)) 
-
-  
-  
-pmg <-  new_norm[new_norm$gene %in% "Cd274",] %>%
-  ggplot(aes(x=factor(gene, levels = goi), y=value)) +
-  geom_bar(aes(fill=condition), position="dodge", stat="summary", fun="mean", width = 0.5) +
-  geom_point(aes(y=value, group=condition), position=position_dodge(width=0.5)) +
-  theme_classic() +
-  theme(axis.title.x = element_blank(),
-        axis.title.y = element_text(size=18),
-        axis.text.x = element_text(size=16, colour="black", angle=45, hjust=1, face = "bold.italic"),
-        axis.text.y = element_text(size=14, colour="black")) +
-  ylab("Normalized Pseudobulk Counts") +
-  scale_y_continuous(limits=c(0, 250), expand=c(0,0))
-
-pmg <- pmg + NoLegend()
-pmg
-fig <- (pmg + theme(axis.title.y = element_blank())) / ((prods | pIgsf) + plot_layout(widths=c(6,1)))
-
-
-ggsave("./Data/Plots/Rods-Igsf11.pdf", plot=igsf, dpi=600, units="cm", height=10, width=15)
-
-ggsave("./Data/Plots/rods-mg2.pdf", plot=fig, dpi=600, units="cm", height=11, width=22)
-
-
-colnames(normalized_counts)
-
-write_csv(sig_res, file = "./Data/DESeq2/EAUvsHealthy.csv")
-
-# Genes of interest ----
-filter(s_tbl, gene == "H2-Ab1")
-
-
-#gene sets----
+# Rank genes for GSEA
 res_tbl <- res_tbl[order(-res_tbl$log2FoldChange),]
 
 gene_list <- res_tbl$log2FoldChange
@@ -515,62 +275,11 @@ entrez <- select(org.Mm.eg.db, keys=names(gene_list), columns=c("ENTREZID", "SYM
 
 names(gene_list) <- entrez$ENTREZID
 
-gene_list
-
 gene_list <- sort(gene_list, decreasing=T)
-
-write.table(gene_list, file="mg_ranked-genes.rnk", sep="\t", quote=F, row.names = T)
-
-
-
-load("Documents/EAU_CITE-seq/mouse_H_v5p2.rdata")
-
-
-
-pathwaysH <- Mm.H
-fgseaRes <- fgsea(pathways = pathwaysH, stats = gene_list, 
-                  minSize=15, maxSize=500)
-
-
-head(fgseaRes[order(padj, -abs(NES)), ], n=20)
-
-fgsea
-
-topPathwaysUP <- fgseaRes[ES > 0][head(order(pval), n=10), pathway]
-topPathwaysDOWN <- fgseaRes[ES < 0][head(order(pval), n=10), pathway]
-topPathways <- c(topPathwaysUP, rev(topPathwaysDOWN))
-
-
-fgseaRes[padj < 0.05]
-
-gseaH_plot <- plotGseaTable(pathwaysH[topPathways], stats = gene_list, fgseaRes, gseaParam = 0.5)
-
-pdf("GSEA-H_plot.pdf")
-gseaH_plot
-dev.off()
-
-fgseaResTidy <- fgseaRes %>%
-  filter(padj < 0.05) %>%
-  arrange(desc(NES))
-
-select(org.Mm.eg.db, keys=unlist(fgseaResTidy[8,8]), columns=c("ENTREZID", "SYMBOL"), keytype="ENTREZID")[,2]
-
-
-pdf("mg_sig_hallmark_gsea.pdf", height=10, width=10)
-ggplot(fgseaResTidy, aes(reorder(pathway, NES), NES)) +
-  geom_col(aes(fill=padj)) +
-  scale_color_continuous() +
-  coord_flip() +
-  labs(x="Pathway", y="Normalized Enrichment Score") + 
-  theme_cowplot()
-dev.off()
-
 
 # Analyse all clusters ----
 
 clusters <- unique(metadata$cluster_id)
-
-clusters
   
 for (x in seq(1, length(clusters))) {
   
@@ -578,7 +287,7 @@ for (x in seq(1, length(clusters))) {
   cl <- clusters[x]
   
   # Make output directory
-  output_dir <- paste("./Documents/EAU_CITE-seq/DESeq2/", cl, sep = "")
+  output_dir <- paste("path/to/DESeq2_results/", cl, sep = "")
   dir.create(output_dir)
   
   # subset metadata
@@ -687,16 +396,6 @@ for (x in seq(1, length(clusters))) {
   write.csv(normalized_counts, file=paste(output_dir, "/", cl, "_norm-counts_EAUvHealthy.csv", sep=""))
 
 }
-
-
-ggplot(res_tbl, aes(x=log2FoldChange, y=-log(padj))) +
-  geom_point()
-
-
-
-ncounts <- read.csv(file="./Documents/EAU_CITE-seq/DESeq2/Müller Glia/Müller Glia_norm-counts_EAUvHealthy.csv", header = T)
-sigs <- read.csv(file="./Documents/EAU_CITE-seq/DESeq2/Müller Glia/Müller Glia_significant-genes_EAUvHealthy.csv", header = T)
-
 
 
 
