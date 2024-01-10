@@ -1,6 +1,6 @@
 # EAU
 
-This is a repository for data analysis code associated with *Single-cell transcriptomic analysis of retinal immune regulation and blood-retinal barrier function during experimental autoimmune uveitis*.
+This is a repository for data analysis code associated with **Single-cell transcriptomic analysis of retinal immune regulation and blood-retinal barrier function during experimental autoimmune uveitis**.
 
 Most code follows standard pipelines found in documentation for the following packages:
 - Seurat (https://satijalab.org/seurat/) 
@@ -9,4 +9,5 @@ Most code follows standard pipelines found in documentation for the following pa
 - CellPhoneDB (https://github.com/ventolab/CellphoneDB)
 - fgsea (https://bioconductor.org/packages/release/bioc/html/fgsea.html)
 
-_Workflow_
+## Workflow
+SoupX -> DoubletFinder -> Seurat (QC, integration & clustering) -> Differential Expression
