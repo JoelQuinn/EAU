@@ -10,4 +10,4 @@ Most code follows standard pipelines found in documentation for the following pa
 - fgsea (https://bioconductor.org/packages/release/bioc/html/fgsea.html)
 
 ## Workflow
-[workflow](./Misc/workflow.png)
+![workflow](./Misc/workflow.png)
