@@ -252,7 +252,7 @@ sig_norm <- data.frame(normalized_counts) %>%
   rownames_to_column(var="gene") %>%
   dplyr::filter(gene %in% sig_res$gene)
 
-# 
+# Normalized counts dataframe for plotting
 new_norm <- data.frame(normalized_counts) %>%
   rownames_to_column(var="gene") %>%
   pivot_longer(cols=!gene, names_to = "Condition") %>%
