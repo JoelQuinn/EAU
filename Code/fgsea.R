@@ -7,7 +7,7 @@ library(msigdbr)
 directory <- "path/to/DESeq2_results"
 
 # Prepare Hallmark pathways - .rdata object downloaded from https://bioinf.wehi.edu.au/software/MSigDB/
-load("Documents/EAU_CITE-seq/mouse_H_v5p2.rdata")
+load("path/to/mouse_H_v5p2.rdata")
 pathwaysH <- Mm.H
 
 # Prepare GO:BP pathways
