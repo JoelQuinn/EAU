@@ -7,23 +7,13 @@ library(DropletUtils)
 library(clustree)
 
 # Dir names
-h_dir <- "D:/CITE-seq/REX/WTCHG_917226_TY73/outs"
-res1_dir <- "D:/CITE-seq/REX/WTCHG_917226_TY74/outs"
-res2_dir <- "D:/CITE-seq/REX/WTCHG_917226_TY75/outs"
-eau1_dir <- "D:/CITE-seq/REX/WTCHG_917226_TY76/outs"
-eau2_dir <- "D:/CITE-seq/REX/WTCHG_917226_TY77/outs"
+h_dir <- "path/to/10X_files/healthy"
+eau1_dir <- "path/to/10X_files/eau1"
+eau2_dir <- "path/to/10X_files/eau2"
 
-# Untreated (healthy)
-unt_raw <- Read10X(paste(h_dir, "/raw_feature_bc_matrix", sep=""))
-unt_filt <- Read10X(paste(h_dir, "/filtered_feature_bc_matrix", sep=""))
-
-# Resistant 1
-res1_raw <- Read10X(paste(res1_dir, "/raw_feature_bc_matrix", sep=""))
-res1_filt <- Read10X(paste(res1_dir, "/filtered_feature_bc_matrix", sep=""))
-
-# Resistant 2
-res2_raw <- Read10X(paste(res2_dir, "/raw_feature_bc_matrix", sep=""))
-res2_filt <- Read10X(paste(res2_dir, "/filtered_feature_bc_matrix", sep=""))
+# Healthy
+h_raw <- Read10X(paste(h_dir, "/raw_feature_bc_matrix", sep=""))
+h_filt <- Read10X(paste(h_dir, "/filtered_feature_bc_matrix", sep=""))
 
 # EAU 1
 eau1_raw <- Read10X(paste(eau1_dir, "/raw_feature_bc_matrix", sep=""))
@@ -48,7 +38,7 @@ umap_cluster <- function(srat, dims){
   return(srat)
 }
 
-# Clustree plotting function
+# Clustree plotting function to choose optimal clustering resolution
 quickclustree <- function(srat) {
   clustree(srat, prefix="SCT_snn_res.",
            node_colour="sc3_stability", 
@@ -82,14 +72,8 @@ soupcorrect <- function(srat, soup, cluster_resolution=0.8){
 
 #----
 # loading objects
-wt <- CreateSeuratObject(counts = unt_filt)
-wtSoup <- SoupChannel(tod = unt_raw, toc=unt_filt)
-
-res1 <- CreateSeuratObject(counts=res1_filt)
-res1soup <- SoupChannel(res1_raw, res1_filt)
-
-res2 <- CreateSeuratObject(counts=res2_filt)
-res2soup <- SoupChannel(res2_raw, res2_filt)
+h <- CreateSeuratObject(counts = h_filt)
+hsoup <- SoupChannel(tod = unt_raw, toc=h_filt)
 
 eau1 <- CreateSeuratObject(counts=eau1_filt)
 eau1soup <- SoupChannel(eau1_raw, eau1_filt)
@@ -99,31 +83,12 @@ eau2soup <- SoupChannel(eau2_raw, eau2_filt)
 
 #----
 #healthy
-wt <- transPCA(wt)
-ElbowPlot(wt, ndims = 75)
-wt <- umap_cluster(wt, dims = 40)
-quickclustree(wt)
-wt_out <- soupcorrect(wt, wtSoup, 0.8)
-write10xCounts(path = "SoupX_TY74", x=wt_out)
-
-
-# resistant 1
-res1 <- transPCA(res1)
-ElbowPlot(res1, ndims = 75)
-res1 <- umap_cluster(res1, dims = 40)
-quickclustree(res1)
-res1_out <- soupcorrect(res1, res1soup, 0.8)
-write10xCounts(path = "SoupX_TY75", x=res1_out)
-
-
-
-# Res2
-res2 <- transPCA(res2)
-ElbowPlot(res2, ndims = 75)
-res2 <- umap_cluster(res2, dims = 35)
-quickclustree(res2)
-res2_out <- soupcorrect(res2, res2soup)
-write10xCounts(path = "SoupX_TY76", x=res2_out)
+h <- transPCA(h)
+ElbowPlot(h, ndims = 75)
+h <- umap_cluster(h, dims = 40)
+quickclustree(h)
+h_out <- soupcorrect(h, hsoup, 0.8)
+write10xCounts(path = "SoupX_Healthy", x=h_out)
 
 #EAU1
 eau1 <- transPCA(eau1)
@@ -131,7 +96,7 @@ ElbowPlot(eau1, ndims = 75)
 eau1 <- umap_cluster(eau1, dims = 50)
 quickclustree(eau1)
 eau1_out <- soupcorrect(eau1, eau1soup, 1)
-write10xCounts(path = "SoupX_TY77", x=eau1_out)
+write10xCounts(path = "SoupX_EAU1", x=eau1_out)
 
 #EAU2
 eau2 <- transPCA(eau2)
@@ -139,5 +104,5 @@ ElbowPlot(eau2, ndims = 75)
 eau2 <- umap_cluster(eau2, dims = 50)
 quickclustree(eau2)
 eau2_out <- soupcorrect(eau2, eau2soup)
-write10xCounts(path = "SoupX_TY78", x=eau2_out)
+write10xCounts(path = "SoupX_EAU2", x=eau2_out)
         
